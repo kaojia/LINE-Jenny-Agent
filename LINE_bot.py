@@ -25,6 +25,19 @@ line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
 client = OpenAI(api_key=OPENAI_KEY)
 
+# 🔹 ChatGPT 回覆函式
+def get_chatgpt_response(user_message):
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",   
+            messages=[{"role": "user", "content": user_message}],
+            max_tokens=500
+        )
+        return response.choices[0].message.content.strip()
+    except Exception as e:
+        print("❌ ChatGPT API 錯誤：", e)
+        return "系統發生錯誤，請稍後再試。"
+
 # 🔹 Webhook
 @app.route("/callback", methods=['POST'])
 def callback():
