@@ -25,6 +25,23 @@ line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
 client = OpenAI(api_key=OPENAI_KEY)
 
+# ✅ 觸發 LINE Loading Animation API
+def send_loading_animation(user_id, duration=20):
+    url = "https://api.line.me/v2/bot/chat/loading/start"
+    headers = {
+        "Authorization": f"Bearer {LINE_CHANNEL_ACCESS_TOKEN}",
+        "Content-Type": "application/json"
+    }
+    data = {
+        "chatId": user_id,
+        "loadingSeconds": duration  # 可設 5~60 秒
+    }
+    try:
+        res = requests.post(url, headers=headers, json=data)
+        print(f"✅ Loading API 狀態碼：{res.status_code}, 回應：{res.text}")
+    except Exception as e:
+        print("❌ Loading Animation API 錯誤：", e)
+
 # 🔹 ChatGPT 回覆函式
 def get_chatgpt_response(user_message):
     try:
