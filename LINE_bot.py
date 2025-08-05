@@ -44,7 +44,7 @@ def send_loading_animation(user_id, duration=20):
         print("❌ Loading Animation API 錯誤：", e)
 
 # 🔹 ChatGPT 回覆函式
-def get_chatgpt_response(user_message):
+def get_gpt_reply(user_message):
     try:
         response = client.chat.completions.create(
             model="gpt-4o-mini",   
