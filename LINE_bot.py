@@ -67,20 +67,43 @@ def callback():
         abort(400)
     return 'OK'
 
-# 處理文字訊息事件
+# 🔹 LINE 訊息處理
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
     try:
         user_text = event.message.text
-        print(f"✅ 收到訊息：{user_text}")
 
-        reply_text = get_chatgpt_response(user_text)
-        print(f"✅ ChatGPT 回覆：{reply_text}")
+        # ✅ 判斷來源（user / group / room）
+        source_type = event.source.type
+        if source_type == "user":
+            chat_id = event.source.user_id
+        elif source_type == "group":
+            chat_id = event.source.group_id
+        elif source_type == "room":
+            chat_id = event.source.room_id
+        else:
+            chat_id = "UNKNOWN"
 
-        line_bot_api.reply_message(
-            event.reply_token,
-            TextSendMessage(text=reply_text)
-        )
+        # ✅ 在 log 中清楚標記來源
+        print(f"✅ 收到訊息：{user_text} | 來源：{source_type} | ID：{chat_id}")
+
+        # 1️⃣ 如果是一對一聊天才發 Loading Animation
+        if source_type == "user":
+            send_loading_animation(chat_id, duration=20)
+            # 🟢 先檢查是否屬於官方已回覆的訊息
+            if any(kw in user_text.lower() for kw in OFFICIAL_HANDLED_KEYWORDS):
+                print(f"⏭️ 跳過 ChatGPT，因為 '{user_text}' 屬於官方已處理訊息")
+                return  # ✅ 不回覆，避免重複
+
+            # 🟢 其他訊息 → # 2️⃣ ChatGPT 回覆
+            reply_text = get_gpt_reply(user_text)
+            print(f"✅ ChatGPT 回覆給 {source_type}({chat_id})：{reply_text}")
+
+            line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
+
+        else:
+        # 來自群組或聊天室 → 不回覆
+            print("訊息來自群組或聊天室，跳過回覆")
 
     except Exception as e:
         print("❌ handle_message 發生錯誤：", e)
