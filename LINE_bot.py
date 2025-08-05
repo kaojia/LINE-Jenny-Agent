@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 import os
 import re
 from difflib import SequenceMatcher
+import requests
 
 app = Flask(__name__)
 
