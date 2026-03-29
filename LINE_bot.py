@@ -24,6 +24,9 @@ LINE_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
 LINE_CHANNEL_SECRET = os.getenv("LINE_CHANNEL_SECRET")
 OPENAI_KEY = os.getenv("OPENAI_API_KEY")
 TARGET_GROUP_ID="C25afbbbc3a5a4c6d8d1083c907dea2d7"
+key_json_str = os.getenv("GOOGLE_SHEETS_KEY")
+CREDENTIALS_DICT2 = json.loads(key_json_str)
+
 
 # 初始化
 line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
