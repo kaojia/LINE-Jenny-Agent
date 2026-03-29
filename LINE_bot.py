@@ -75,14 +75,16 @@ def process_business_card(image_data, chat_id):
                     "role": "system", 
                     "content": """你是一個專業的名片辨識助手。請嚴格依照 JSON 格式回傳：
                     {
-                      "is_card": true, 
-                      "name": "中文姓名", 
-                      "english_name": "英文姓名", 
-                      "company": "公司", 
-                      "brand":"品牌"
-                      "email": "Email", 
-                      "phone": "電話"
-                    } 
+                        "is_card": true, 
+                        "name": "中文姓名", 
+                        "english_name": "英文姓名", 
+                        "company": "公司", 
+                        "title": "職稱",
+                        "brand":"品牌",
+                        "email": "Email", 
+                        "phone": "電話"
+                    }
+                    
                     若名片上缺少某項資訊，請填入空字串。如果圖片內容不是名片，請回傳 {"is_card": false}。"""
                 },
                 {
@@ -102,6 +104,7 @@ def process_business_card(image_data, chat_id):
         new_eng_name = res_data.get('english_name', '')
         new_company = res_data.get('company', '')
         new_brand = res_data.get('brand', '')
+        new_title = res_data.get('title', '')
 
         # 2. 檢查重複 (以 姓名+公司 為準)
         # 請確保 Google Sheet 的標題名稱與程式碼中的 key 完全一致
@@ -119,6 +122,7 @@ def process_business_card(image_data, chat_id):
             new_name, 
             new_eng_name, 
             new_company,
+            new_title,
             new_brand, 
             res_data.get('email', ''), 
             res_data.get('phone', ''), 
@@ -179,15 +183,16 @@ def search_sheet_data(keyword):
             # 支援搜尋 姓名、英文姓名、公司名稱
             if keyword.lower() in str(row.get('姓名', '')).lower() or \
                keyword.lower() in str(row.get('英文姓名', '')).lower() or \
-               keyword.lower() in str(row.get('公司', '')).lower() or \
-               keyword.lower() in str(row.get('品牌', '')).lower():
+               keyword.lower() in str(row.get('公司', '')).lower() or  \
+               keyword.lower() in str(row.get('職稱', '')).lower():
                 
                 res_str = (f"👤 姓名：{row.get('姓名')}\n"
-                           f"🔤 英文名：{row.get('英文姓名')}\n"
-                           f"🏢 公司：{row.get('公司')}\n"
-                           f"⭐️ 品牌：{row.get('品牌')}\n"
-                           f"📧 Email：{row.get('Email')}\n"
-                           f"📞 電話：{row.get('電話')}")
+                            f"🔤 英文名：{row.get('英文姓名')}\n"
+                            f"🏢 公司：{row.get('公司')}\n"
+                            f"💼 職稱：{row.get('職稱')}\n"
+                            f"⭐️ 品牌：{row.get('品牌')}\n"
+                            f"📧 Email：{row.get('Email')}\n"
+                            f"📞 電話：{row.get('電話')}")
                 results.append(res_str)
         
         if not results:
@@ -204,7 +209,7 @@ def update_sheet_data(name, column_name, new_value):
         headers = sheet.row_values(1) # 取得標題列
         
         if column_name not in headers:
-            return f"❌ 找不到欄位「{column_name}」，請確認標題是否為：姓名、英文姓名、公司、品牌、Email、電話。"
+            return f"❌ 找不到欄位「{column_name}」，請確認標題是否為：姓名、英文姓名、公司、職稱、品牌、Email、電話。"
         
         col_index = headers.index(column_name) + 1
         cell = sheet.find(name) # 尋找姓名儲存格
@@ -253,6 +258,12 @@ def handle_message(event):
             reply_text = get_gpt_reply(user_text)
 
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
+        
+    except Exception as e:
+        print(f"❌ handle_message 發生錯誤：{e}")
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=500)
         
     except Exception as e:
         print(f"❌ handle_message 發生錯誤：{e}")
