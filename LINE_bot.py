@@ -265,8 +265,4 @@ def handle_message(event):
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=500)
         
-    except Exception as e:
-        print(f"❌ handle_message 發生錯誤：{e}")
 
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=500)
