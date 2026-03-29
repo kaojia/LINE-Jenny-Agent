@@ -56,7 +56,7 @@ def get_gpt_reply(user_message):
         response = client.chat.completions.create(
             model="gpt-5.4-mini",   
             messages=[{"role": "user", "content": user_message}],
-            max_tokens=500
+            max_completion_tokens=500
         )
         return response.choices[0].message.content.strip()
     except Exception as e:
