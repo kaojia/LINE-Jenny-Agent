@@ -3,3 +3,7 @@ line-bot-sdk
 python-dotenv
 gunicorn
 openai
+gspread 
+google-auth 
+google-api-python-client
+requests
