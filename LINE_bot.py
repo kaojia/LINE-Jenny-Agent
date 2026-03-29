@@ -23,6 +23,7 @@ app = Flask(__name__)
 LINE_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
 LINE_CHANNEL_SECRET = os.getenv("LINE_CHANNEL_SECRET")
 OPENAI_KEY = os.getenv("OPENAI_API_KEY")
+TARGET_GROUP_ID="C25afbbbc3a5a4c6d8d1083c907dea2d7"
 
 # 初始化
 line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
