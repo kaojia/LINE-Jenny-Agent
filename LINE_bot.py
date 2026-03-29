@@ -184,6 +184,7 @@ def search_sheet_data(keyword):
             if keyword.lower() in str(row.get('姓名', '')).lower() or \
                keyword.lower() in str(row.get('英文姓名', '')).lower() or \
                keyword.lower() in str(row.get('公司', '')).lower() or  \
+               keyword.lower() in str(row.get('品牌', '')).lower() or  \
                keyword.lower() in str(row.get('職稱', '')).lower():
                 
                 res_str = (f"👤 姓名：{row.get('姓名')}\n"
