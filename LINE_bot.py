@@ -98,7 +98,9 @@ def retry_on_error(func, max_retries=3, delay=2):
 
 def upload_image_to_drive(image_data, filename):
     """上傳名片圖片到 Google Drive，回傳檔案連結"""
+    print(f"📂 GOOGLE_DRIVE_FOLDER_ID: '{GOOGLE_DRIVE_FOLDER_ID}'")
     if not GOOGLE_DRIVE_FOLDER_ID:
+        print("⚠️ 未設定 GOOGLE_DRIVE_FOLDER_ID，跳過圖片上傳")
         return None
     try:
         drive_service = get_drive_service()
@@ -114,6 +116,7 @@ def upload_image_to_drive(image_data, filename):
             ).execute()
         
         file = retry_on_error(do_upload)
+        print(f"✅ 圖片上傳成功，file id: {file.get('id')}")
         # 設定為任何人都可以檢視
         drive_service.permissions().create(
             fileId=file['id'],
