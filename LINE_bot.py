@@ -270,6 +270,7 @@ def process_business_card(image_data, chat_id):
         drive_link = upload_image_to_drive(image_data, filename)
 
         # 4. 寫入 Google Sheet
+        created_time = time.strftime("%Y/%m/%d %H:%M", time.localtime())
         row_data = [
             new_name, 
             new_eng_name, 
@@ -279,6 +280,7 @@ def process_business_card(image_data, chat_id):
             res_data.get('email', ''), 
             res_data.get('phone', ''),
             drive_link or '',  # 名片圖片連結
+            created_time,      # 建立時間
         ]
         
         def do_append():
