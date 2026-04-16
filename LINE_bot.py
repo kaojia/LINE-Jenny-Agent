@@ -436,26 +436,20 @@ def build_flex_card(row):
         }
     }
     
-    # Footer：複製按鈕 + 圖片連結
+    # Footer：快捷按鈕 + 圖片連結
     footer_buttons = []
     
     if phone:
+        # 用 tel: 協議，點了可以撥打電話，也能從撥號畫面複製號碼
+        clean_phone = str(phone).replace(" ", "").replace("-", "")
         footer_buttons.append({
             "type": "button", "style": "link", "height": "sm",
-            "action": {
-                "type": "clipboard",
-                "label": "📞 複製電話",
-                "clipboardText": str(phone)
-            }
+            "action": {"type": "uri", "label": f"📞 {phone}", "uri": f"tel:{clean_phone}"}
         })
     if email:
         footer_buttons.append({
             "type": "button", "style": "link", "height": "sm",
-            "action": {
-                "type": "clipboard",
-                "label": "📧 複製 Email",
-                "clipboardText": str(email)
-            }
+            "action": {"type": "uri", "label": f"📧 {email}", "uri": f"mailto:{email}"}
         })
     if drive_link:
         footer_buttons.append({
