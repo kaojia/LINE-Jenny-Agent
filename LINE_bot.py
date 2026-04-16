@@ -7,7 +7,7 @@ from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
 from linebot.models import (
     MessageEvent, TextMessage, ImageMessage, 
-    TextSendMessage, FlexSendMessage
+    TextSendMessage
 )
 from openai import OpenAI
 from dotenv import load_dotenv
@@ -355,131 +355,40 @@ def search_sheet_data(keyword):
     except Exception as e:
         return None, f"❌ 查詢發生錯誤：{e}"
 
-def build_flex_card(row):
-    """將一筆名片資料轉成 Flex Message bubble"""
-    name = row.get('姓名', '') or '未知'
-    eng_name = row.get('英文姓名', '') or ''
-    company = row.get('公司', '') or ''
-    title = row.get('職稱', '') or ''
-    brand = row.get('品牌', '') or ''
-    email = row.get('Email', '') or ''
-    phone = row.get('電話', '') or ''
-    drive_link = row.get('名片圖片', '') or ''
+def build_text_results(results, keyword):
+    """將查詢結果組成純文字格式，方便複製"""
+    lines = [f"✅ 找到 {len(results)} 筆「{keyword}」的名片資料：\n"]
     
-    # 標題區
-    header_text = name
-    if eng_name:
-        header_text += f" ({eng_name})"
+    for i, row in enumerate(results, start=1):
+        name = row.get('姓名', '') or ''
+        eng_name = row.get('英文姓名', '') or ''
+        company = row.get('公司', '') or ''
+        title = row.get('職稱', '') or ''
+        brand = row.get('品牌', '') or ''
+        email = row.get('Email', '') or ''
+        phone = row.get('電話', '') or ''
+        drive_link = row.get('名片圖片', '') or ''
+        
+        card = f"【{i}】{name}"
+        if eng_name:
+            card += f" ({eng_name})"
+        card += "\n"
+        if company:
+            card += f"🏢 公司：{company}\n"
+        if title:
+            card += f"💼 職稱：{title}\n"
+        if brand:
+            card += f"⭐ 品牌：{brand}\n"
+        if email:
+            card += f"📧 Email：{email}\n"
+        if phone:
+            card += f"📞 電話：{phone}\n"
+        if drive_link:
+            card += f"� 名片圖片：{drive_link}\n"
+        
+        lines.append(card)
     
-    body_contents = []
-    
-    if company:
-        body_contents.append({
-            "type": "box", "layout": "horizontal", "spacing": "sm",
-            "contents": [
-                {"type": "text", "text": "🏢 公司", "size": "sm", "color": "#888888", "flex": 2},
-                {"type": "text", "text": str(company), "size": "sm", "flex": 4, "wrap": True}
-            ]
-        })
-    if title:
-        body_contents.append({
-            "type": "box", "layout": "horizontal", "spacing": "sm",
-            "contents": [
-                {"type": "text", "text": "💼 職稱", "size": "sm", "color": "#888888", "flex": 2},
-                {"type": "text", "text": str(title), "size": "sm", "flex": 4, "wrap": True}
-            ]
-        })
-    if brand:
-        body_contents.append({
-            "type": "box", "layout": "horizontal", "spacing": "sm",
-            "contents": [
-                {"type": "text", "text": "⭐ 品牌", "size": "sm", "color": "#888888", "flex": 2},
-                {"type": "text", "text": str(brand), "size": "sm", "flex": 4, "wrap": True}
-            ]
-        })
-    if email:
-        body_contents.append({
-            "type": "box", "layout": "horizontal", "spacing": "sm",
-            "contents": [
-                {"type": "text", "text": "📧 Email", "size": "sm", "color": "#888888", "flex": 2},
-                {"type": "text", "text": str(email), "size": "sm", "flex": 4, "wrap": True}
-            ]
-        })
-    if phone:
-        body_contents.append({
-            "type": "box", "layout": "horizontal", "spacing": "sm",
-            "contents": [
-                {"type": "text", "text": "📞 電話", "size": "sm", "color": "#888888", "flex": 2},
-                {"type": "text", "text": str(phone), "size": "sm", "flex": 4, "wrap": True}
-            ]
-        })
-    
-    # 如果沒有任何欄位，放一個預設文字
-    if not body_contents:
-        body_contents.append({"type": "text", "text": "（無詳細資料）", "size": "sm", "color": "#999999"})
-    
-    bubble = {
-        "type": "bubble",
-        "size": "kilo",
-        "header": {
-            "type": "box", "layout": "vertical",
-            "contents": [
-                {"type": "text", "text": header_text, "weight": "bold", "size": "lg", "wrap": True}
-            ],
-            "backgroundColor": "#F0F8FF",
-            "paddingAll": "15px"
-        },
-        "body": {
-            "type": "box", "layout": "vertical", "spacing": "md",
-            "contents": body_contents,
-            "paddingAll": "15px"
-        }
-    }
-    
-    # Footer：快捷按鈕 + 圖片連結
-    footer_buttons = []
-    
-    if phone:
-        # 用 tel: 協議，點了可以撥打電話，也能從撥號畫面複製號碼
-        clean_phone = str(phone).replace(" ", "").replace("-", "")
-        footer_buttons.append({
-            "type": "button", "style": "link", "height": "sm",
-            "action": {"type": "uri", "label": f"📞 {phone}", "uri": f"tel:{clean_phone}"}
-        })
-    if email:
-        footer_buttons.append({
-            "type": "button", "style": "link", "height": "sm",
-            "action": {"type": "uri", "label": f"📧 {email}", "uri": f"mailto:{email}"}
-        })
-    if drive_link:
-        footer_buttons.append({
-            "type": "button", "style": "link", "height": "sm",
-            "action": {"type": "uri", "label": "📷 查看名片圖片", "uri": str(drive_link)}
-        })
-    
-    if footer_buttons:
-        bubble["footer"] = {
-            "type": "box", "layout": "vertical", "spacing": "sm",
-            "contents": footer_buttons,
-            "paddingAll": "10px"
-        }
-    
-    return bubble
-
-def build_flex_results(results, keyword):
-    """將多筆查詢結果組成 Flex carousel"""
-    # LINE Flex carousel 最多 12 個 bubble
-    bubbles = [build_flex_card(row) for row in results[:12]]
-    
-    flex_content = {
-        "type": "carousel",
-        "contents": bubbles
-    }
-    
-    return FlexSendMessage(
-        alt_text=f"✅ 找到 {len(results)} 筆「{keyword}」的名片資料",
-        contents=flex_content
-    )
+    return "\n".join(lines)
 
 def delete_sheet_data(name, company=None):
     """刪除指定姓名的整列資料，支援多筆重複時用公司名稱區分"""
@@ -641,7 +550,7 @@ def handle_message(event):
         source_type = event.source.type
         chat_id = getattr(event.source, f"{source_type}_id", "UNKNOWN")
 
-        # 1. 🔍 查詢模式 (Flex Message 卡片)
+        # 1. 🔍 查詢模式 (純文字，方便複製)
         if user_text.startswith("查詢"):
             keyword = user_text.replace("查詢", "").strip()
             print(f"🔍 查詢關鍵字: {keyword}")
@@ -649,9 +558,7 @@ def handle_message(event):
                 send_loading_animation(chat_id, duration=5)
                 results, error_msg = search_sheet_data(keyword)
                 if results:
-                    flex_msg = build_flex_results(results, keyword)
-                    line_bot_api.reply_message(event.reply_token, flex_msg)
-                    return
+                    reply_text = build_text_results(results, keyword)
                 else:
                     reply_text = error_msg
             else:
