@@ -5,18 +5,13 @@ import requests
 from flask import Flask, request, abort
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
-from linebot.models import (
-    MessageEvent, TextMessage, ImageMessage, 
-    TextSendMessage
-)
+from linebot.models import MessageEvent, TextMessage, ImageMessage, TextSendMessage
 from openai import OpenAI
 from dotenv import load_dotenv
 import gspread
 import json
 from google.oauth2.service_account import Credentials
 from oauth2client.service_account import ServiceAccountCredentials
-from googleapiclient.discovery import build
-from googleapiclient.http import MediaInMemoryUpload
 
 # 🔹 載入環境變數
 load_dotenv()
@@ -27,13 +22,10 @@ app = Flask(__name__)
 LINE_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
 LINE_CHANNEL_SECRET = os.getenv("LINE_CHANNEL_SECRET")
 OPENAI_KEY = os.getenv("OPENAI_API_KEY")
-TARGET_GROUP_ID="C25afbbbc3a5a4c6d8d1083c907dea2d7"
+TARGET_GROUP_ID = "C25afbbbc3a5a4c6d8d1083c907dea2d7"
 key_json_str = os.getenv("Creds2")
 CREDENTIALS_DICT2 = json.loads(key_json_str)
 GOOGLE_SHEET_KEY = "1P56w56RVhU9Re_Q6hehLbI6eXnOZ_x-VJdLYK1_kWRE"
-GOOGLE_DRIVE_FOLDER_ID = os.getenv("GOOGLE_DRIVE_FOLDER_ID", "")  # Google Drive 資料夾 ID，用來存名片圖片
-
-
 
 # 初始化
 line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
@@ -47,42 +39,37 @@ HISTORY_TIMEOUT = 1800    # 30 分鐘（秒）沒互動就清空
 # 格式：{ chat_id: { "messages": [...], "last_time": timestamp } }
 conversation_history = {}
 
+
 def get_chat_history(chat_id):
     """取得對話歷史，超過 30 分鐘自動清空"""
     now = time.time()
     if chat_id in conversation_history:
         last_time = conversation_history[chat_id]["last_time"]
         if now - last_time > HISTORY_TIMEOUT:
-            # 超過 30 分鐘，清空
             del conversation_history[chat_id]
             return []
         return conversation_history[chat_id]["messages"]
     return []
+
 
 def add_to_history(chat_id, role, content):
     """新增一筆對話到歷史，超過上限就移除最舊的"""
     now = time.time()
     if chat_id not in conversation_history:
         conversation_history[chat_id] = {"messages": [], "last_time": now}
-    
+
     conversation_history[chat_id]["messages"].append({"role": role, "content": content})
     conversation_history[chat_id]["last_time"] = now
-    
-    # 超過上限，移除最舊的一輪（user + assistant = 2 筆）
+
     while len(conversation_history[chat_id]["messages"]) > MAX_HISTORY * 2:
         conversation_history[chat_id]["messages"].pop(0)
 
+
 def get_gs_client():
     SCOPE = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
-    # 確保每次呼叫都能重新取得憑證，減少 Token 過期問題
     creds = ServiceAccountCredentials.from_json_keyfile_dict(CREDENTIALS_DICT2, SCOPE)
     return gspread.authorize(creds)
 
-def get_drive_service():
-    """取得 Google Drive API 服務"""
-    SCOPE = ['https://www.googleapis.com/auth/drive']
-    creds = ServiceAccountCredentials.from_json_keyfile_dict(CREDENTIALS_DICT2, SCOPE)
-    return build('drive', 'v3', credentials=creds)
 
 def retry_on_error(func, max_retries=3, delay=2):
     """通用重試機制，遇到錯誤自動重試"""
@@ -92,40 +79,10 @@ def retry_on_error(func, max_retries=3, delay=2):
         except Exception as e:
             print(f"⚠️ 第 {attempt + 1} 次嘗試失敗：{e}")
             if attempt < max_retries - 1:
-                time.sleep(delay * (attempt + 1))  # 遞增等待時間
+                time.sleep(delay * (attempt + 1))
             else:
                 raise e
 
-def upload_image_to_drive(image_data, filename):
-    """上傳名片圖片到 Google Drive，回傳檔案連結"""
-    print(f"📂 GOOGLE_DRIVE_FOLDER_ID: '{GOOGLE_DRIVE_FOLDER_ID}'")
-    if not GOOGLE_DRIVE_FOLDER_ID:
-        print("⚠️ 未設定 GOOGLE_DRIVE_FOLDER_ID，跳過圖片上傳")
-        return None
-    try:
-        drive_service = get_drive_service()
-        file_metadata = {
-            'name': filename,
-            'parents': [GOOGLE_DRIVE_FOLDER_ID]
-        }
-        media = MediaInMemoryUpload(image_data, mimetype='image/jpeg')
-        
-        def do_upload():
-            return drive_service.files().create(
-                body=file_metadata, media_body=media, fields='id, webViewLink'
-            ).execute()
-        
-        file = retry_on_error(do_upload)
-        print(f"✅ 圖片上傳成功，file id: {file.get('id')}")
-        # 設定為任何人都可以檢視
-        drive_service.permissions().create(
-            fileId=file['id'],
-            body={'type': 'anyone', 'role': 'reader'}
-        ).execute()
-        return file.get('webViewLink', '')
-    except Exception as e:
-        print(f"❌ 上傳圖片到 Drive 失敗：{e}")
-        return None
 
 # --- 功能函式區 ---
 
@@ -142,32 +99,30 @@ def send_loading_animation(chat_id, duration=20):
     except Exception as e:
         print(f"❌ Loading API 錯誤：{e}")
 
+
 def get_gpt_reply(user_message, chat_id):
     """ChatGPT 帶上下文回覆（僅一般對話模式使用）"""
     try:
-        # 取得歷史對話
         history = get_chat_history(chat_id)
-        
-        # 組合 messages：system + 歷史 + 新訊息
         messages = [{"role": "system", "content": "你是一個友善的 AI 助手，請用繁體中文回覆。"}]
         messages.extend(history)
         messages.append({"role": "user", "content": user_message})
-        
+
         response = client.chat.completions.create(
-            model="gpt-5.4-mini",   
+            model="gpt-5.4-mini",
             messages=messages,
             max_completion_tokens=500
         )
         reply = response.choices[0].message.content.strip()
-        
-        # 儲存這輪對話到歷史
+
         add_to_history(chat_id, "user", user_message)
         add_to_history(chat_id, "assistant", reply)
-        
+
         return reply
     except Exception as e:
         print(f"❌ ChatGPT API 錯誤：{e}")
         return "系統發生錯誤，請稍後再試。"
+
 
 def parse_update_intent(user_message):
     """用 GPT 解析自然語言修改指令，回傳 {name, column_name, new_value} 或 None"""
@@ -202,7 +157,6 @@ def parse_update_intent(user_message):
         result = json.loads(response.choices[0].message.content)
         if "error" in result:
             return None, result["error"]
-        # 驗證必要欄位
         if not all(k in result for k in ("name", "column_name", "new_value")):
             return None, "無法完整解析修改內容"
         return result, None
@@ -210,30 +164,30 @@ def parse_update_intent(user_message):
         print(f"❌ parse_update_intent 錯誤：{e}")
         return None, f"解析失敗：{str(e)}"
 
+
 def process_business_card(image_data, chat_id):
-    """名片辨識、重複檢查、儲存、上傳圖片"""
+    """名片辨識、重複檢查、儲存"""
     try:
-        # 1. 呼叫 GPT-5.4-mini 辨識圖片 (Vision)
         base64_image = base64.b64encode(image_data).decode('utf-8')
-        
+
         def do_vision():
             return client.chat.completions.create(
                 model="gpt-5.4-mini",
                 messages=[
                     {
-                        "role": "system", 
+                        "role": "system",
                         "content": """你是一個專業的名片辨識助手。請嚴格依照 JSON 格式回傳：
                         {
-                            "is_card": true, 
-                            "name": "中文姓名", 
-                            "english_name": "英文姓名", 
-                            "company": "公司", 
+                            "is_card": true,
+                            "name": "中文姓名",
+                            "english_name": "英文姓名",
+                            "company": "公司",
                             "title": "職稱",
                             "brand":"品牌",
-                            "email": "Email", 
+                            "email": "Email",
                             "phone": "電話"
                         }
-                        
+
                         若名片上缺少某項資訊，請填入空字串。如果圖片內容不是名片，請回傳 {"is_card": false}。"""
                     },
                     {
@@ -241,9 +195,9 @@ def process_business_card(image_data, chat_id):
                         "content": [{"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}]
                     }
                 ],
-                response_format={ "type": "json_object" }
+                response_format={"type": "json_object"}
             )
-        
+
         response = retry_on_error(do_vision)
         res_data = json.loads(response.choices[0].message.content)
         if not res_data.get('is_card'):
@@ -255,49 +209,39 @@ def process_business_card(image_data, chat_id):
         new_brand = res_data.get('brand', '')
         new_title = res_data.get('title', '')
 
-        # 2. 檢查重複 (以 姓名+公司 為準)
         def do_sheet_read():
             gc = get_gs_client()
             sheet = gc.open_by_key(GOOGLE_SHEET_KEY).sheet1
             return sheet, sheet.get_all_records()
-        
+
         sheet, all_records = retry_on_error(do_sheet_read)
-        
+
         for index, row in enumerate(all_records, start=2):
             if str(row.get('姓名')) == new_name and str(row.get('公司')) == new_company:
                 return f"🚫 內容重複！此名片已存在於試算表第 {index} 列。"
 
-        # 3. 上傳名片圖片到 Google Drive
-        timestamp = time.strftime("%Y%m%d_%H%M%S")
-        filename = f"{new_name}_{new_company}_{timestamp}.jpg"
-        drive_link = upload_image_to_drive(image_data, filename)
-
-        # 4. 寫入 Google Sheet
         created_time = time.strftime("%Y/%m/%d %H:%M", time.localtime())
         row_data = [
-            new_name, 
-            new_eng_name, 
+            new_name,
+            new_eng_name,
             new_company,
             new_title,
-            new_brand, 
-            res_data.get('email', ''), 
+            new_brand,
+            res_data.get('email', ''),
             res_data.get('phone', ''),
-            drive_link or '',  # 名片圖片連結
-            created_time,      # 建立時間
+            created_time,
         ]
-        
+
         def do_append():
             sheet.append_row(row_data)
         retry_on_error(do_append)
-        
-        result_msg = f"✅ 成功儲存！\n姓名：{new_name}\n英文姓名：{new_eng_name}\n品牌:{new_brand}\n公司：{new_company}\n資料已存至 Google Sheet。"
-        if drive_link:
-            result_msg += f"\n📷 名片圖片：{drive_link}"
-        return result_msg
+
+        return f"✅ 成功儲存！\n姓名：{new_name}\n英文姓名：{new_eng_name}\n品牌:{new_brand}\n公司：{new_company}\n資料已存至 Google Sheet。"
 
     except Exception as e:
         print(f"❌ process_business_card 錯誤：{e}")
         return f"處理名片時發生錯誤：{str(e)}"
+
 
 # --- Webhook 路由 ---
 
@@ -319,12 +263,12 @@ def handle_image(event):
     source_type = event.source.type
     chat_id = getattr(event.source, f"{source_type}_id", "UNKNOWN")
     print(f"📌 目前訊息來源 chat_id: {chat_id}")
-    
+
     if source_type == "group" and chat_id == TARGET_GROUP_ID:
         send_loading_animation(chat_id, duration=10)
         message_content = line_bot_api.get_message_content(event.message.id)
         image_data = message_content.content
-        
+
         result_msg = process_business_card(image_data, chat_id)
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text=result_msg))
 
@@ -332,38 +276,39 @@ def handle_image(event):
 # --- 工具函式：搜尋與修改 Google Sheets ---
 
 def search_sheet_data(keyword):
-    """根據姓名或公司名稱查找資料，回傳 Flex Message 格式"""
+    """根據姓名或公司名稱查找資料"""
     try:
         print("📡 開始查詢 Google Sheet")
-        
+
         def do_read():
             gc = get_gs_client()
-            sheet = gc.open_by_key(GOOGLE_SHEET_KEY).sheet1        
+            sheet = gc.open_by_key(GOOGLE_SHEET_KEY).sheet1
             return sheet.get_all_records()
-        
+
         all_records = retry_on_error(do_read)
         print(f"📊 讀到資料筆數: {len(all_records)}")
         results = []
-        
+
         for row in all_records:
             if keyword.lower() in str(row.get('姓名', '')).lower() or \
                keyword.lower() in str(row.get('英文姓名', '')).lower() or \
-               keyword.lower() in str(row.get('公司', '')).lower() or  \
-               keyword.lower() in str(row.get('品牌', '')).lower() or  \
+               keyword.lower() in str(row.get('公司', '')).lower() or \
+               keyword.lower() in str(row.get('品牌', '')).lower() or \
                keyword.lower() in str(row.get('職稱', '')).lower():
                 results.append(row)
-        
+
         if not results:
             return None, f"🔍 找不到與「{keyword}」相關的資料。"
-        
+
         return results, None
     except Exception as e:
         return None, f"❌ 查詢發生錯誤：{e}"
 
+
 def build_text_results(results, keyword):
     """將查詢結果組成純文字格式，方便複製"""
     lines = [f"✅ 找到 {len(results)} 筆「{keyword}」的名片資料：\n"]
-    
+
     for i, row in enumerate(results, start=1):
         name = row.get('姓名', '') or ''
         eng_name = row.get('英文姓名', '') or ''
@@ -372,8 +317,7 @@ def build_text_results(results, keyword):
         brand = row.get('品牌', '') or ''
         email = row.get('Email', '') or ''
         phone = row.get('電話', '') or ''
-        drive_link = row.get('名片圖片', '') or ''
-        
+
         card = f"【{i}】{name}"
         if eng_name:
             card += f" ({eng_name})"
@@ -388,12 +332,11 @@ def build_text_results(results, keyword):
             card += f"📧 Email：{email}\n"
         if phone:
             card += f"📞 電話：{phone}\n"
-        if drive_link:
-            card += f"� 名片圖片：{drive_link}\n"
-        
+
         lines.append(card)
-    
+
     return "\n".join(lines)
+
 
 def delete_sheet_data(name, company=None):
     """刪除指定姓名的整列資料，支援多筆重複時用公司名稱區分"""
@@ -402,17 +345,17 @@ def delete_sheet_data(name, company=None):
             gc = get_gs_client()
             sheet = gc.open_by_key(GOOGLE_SHEET_KEY).sheet1
             return sheet, sheet.get_all_records()
-        
+
         sheet, all_records = retry_on_error(do_read)
-        
+
         matches = []
         for index, row in enumerate(all_records, start=2):
             if str(row.get('姓名', '')).strip() == name.strip():
                 matches.append({"row": index, "data": row})
-        
+
         if not matches:
             return f"❌ 找不到姓名為「{name}」的資料，請確認輸入是否正確。"
-        
+
         if company:
             filtered = [m for m in matches if company.strip() in str(m["data"].get('公司', '')).strip()]
             if not filtered:
@@ -425,14 +368,14 @@ def delete_sheet_data(name, company=None):
                         f"🏢 公司：{target['data'].get('公司', '')}")
             else:
                 matches = filtered
-        
+
         if len(matches) == 1:
             target = matches[0]
             sheet.delete_rows(target["row"])
             return (f"🗑️ 已刪除資料：\n"
                     f"👤 姓名：{target['data'].get('姓名', '')}\n"
                     f"🏢 公司：{target['data'].get('公司', '')}")
-        
+
         result_lines = [f"⚠️ 找到 {len(matches)} 筆「{name}」的資料，請指定更精確的條件：\n"]
         for i, m in enumerate(matches, start=1):
             d = m["data"]
@@ -441,9 +384,10 @@ def delete_sheet_data(name, company=None):
             )
         result_lines.append(f"\n💡 請加上公司名稱，例如：\n刪除 {name}，公司是XXX的那個")
         return "\n".join(result_lines)
-        
+
     except Exception as e:
         return f"❌ 刪除失敗：{e}"
+
 
 def batch_delete_sheet_data(keyword, field):
     """批次刪除：根據條件刪除所有符合的資料"""
@@ -452,19 +396,17 @@ def batch_delete_sheet_data(keyword, field):
             gc = get_gs_client()
             sheet = gc.open_by_key(GOOGLE_SHEET_KEY).sheet1
             return sheet, sheet.get_all_records()
-        
+
         sheet, all_records = retry_on_error(do_read)
-        
-        # 找出所有符合的列（從後面開始刪，避免 row index 偏移）
+
         matches = []
         for index, row in enumerate(all_records, start=2):
             if keyword.strip().lower() in str(row.get(field, '')).strip().lower():
                 matches.append({"row": index, "data": row})
-        
+
         if not matches:
             return f"❌ 找不到{field}包含「{keyword}」的資料。"
-        
-        # 從最後一列開始刪，避免 index 偏移
+
         deleted_count = 0
         for m in reversed(matches):
             try:
@@ -472,11 +414,12 @@ def batch_delete_sheet_data(keyword, field):
                 deleted_count += 1
             except Exception as e:
                 print(f"⚠️ 刪除第 {m['row']} 列失敗：{e}")
-        
+
         return f"🗑️ 批次刪除完成！\n共刪除 {deleted_count} 筆{field}包含「{keyword}」的資料。"
-        
+
     except Exception as e:
         return f"❌ 批次刪除失敗：{e}"
+
 
 def parse_delete_intent(user_message):
     """用 GPT 解析自然語言刪除指令，支援單筆和批次刪除"""
@@ -519,6 +462,7 @@ def parse_delete_intent(user_message):
         print(f"❌ parse_delete_intent 錯誤：{e}")
         return None, f"解析失敗：{str(e)}"
 
+
 def update_sheet_data(name, column_name, new_value):
     """修改指定姓名的欄位資訊（含重試機制）"""
     try:
@@ -526,36 +470,36 @@ def update_sheet_data(name, column_name, new_value):
             gc = get_gs_client()
             sheet = gc.open_by_key(GOOGLE_SHEET_KEY).sheet1
             headers = sheet.row_values(1)
-            
+
             if column_name not in headers:
                 raise ValueError(f"找不到欄位「{column_name}」")
-            
+
             col_index = headers.index(column_name) + 1
             cell = sheet.find(name)
-            
+
             if cell:
                 sheet.update_cell(cell.row, col_index, new_value)
                 return f"✨ 修改成功！\n已將「{name}」的【{column_name}】更新為：{new_value}"
             else:
                 return f"❌ 找不到姓名為「{name}」的資料，請確認輸入是否正確。"
-        
+
         return retry_on_error(do_update)
     except ValueError as e:
         return f"❌ {e}，請確認標題是否為：姓名、英文姓名、公司、職稱、品牌、Email、電話。"
     except Exception as e:
         return f"❌ 修改失敗：{e}"
 
+
 # --- LINE 訊息處理邏輯 ---
 
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
     try:
-        # 統一處理全形與半形空白/逗號
         user_text = event.message.text.strip().replace("，", ",").replace("  ", " ")
         source_type = event.source.type
         chat_id = getattr(event.source, f"{source_type}_id", "UNKNOWN")
 
-        # 1. 🔍 查詢模式 (純文字，方便複製)
+        # 1. 🔍 查詢模式
         if user_text.startswith("查詢"):
             keyword = user_text.replace("查詢", "").strip()
             print(f"🔍 查詢關鍵字: {keyword}")
@@ -568,7 +512,7 @@ def handle_message(event):
                     reply_text = error_msg
             else:
                 reply_text = "💡 請輸入關鍵字，例如：\n查詢 Jenny\n查詢 Amazon"
-            
+
         # 2. 📝 修改模式 (自然語言)
         elif user_text.startswith("修改"):
             raw_text = user_text.replace("修改", "").strip()
@@ -604,7 +548,6 @@ def handle_message(event):
 
         # 4. 🤖 一般對話模式 (帶上下文的 ChatGPT)
         else:
-            # 名片群組內不開放閒聊，只接受指令
             if source_type == "group" and chat_id == TARGET_GROUP_ID:
                 reply_text = "💡 本群組僅支援以下指令：\n\n🔍 查詢 關鍵字\n📝 修改 自然語言描述\n🗑️ 刪除 自然語言描述\n\n範例：\n查詢 Jenny\n修改 把Jenny的電話改成0912345678\n刪除 王小明"
             else:
@@ -612,11 +555,10 @@ def handle_message(event):
                 reply_text = get_gpt_reply(user_text, chat_id)
 
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
-        
+
     except Exception as e:
         print(f"❌ handle_message 發生錯誤：{e}")
 
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=500)
-        
-
