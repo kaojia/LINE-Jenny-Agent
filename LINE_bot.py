@@ -436,16 +436,38 @@ def build_flex_card(row):
         }
     }
     
-    # 如果有 Drive 圖片連結，加一個按鈕
+    # Footer：複製按鈕 + 圖片連結
+    footer_buttons = []
+    
+    if phone:
+        footer_buttons.append({
+            "type": "button", "style": "link", "height": "sm",
+            "action": {
+                "type": "clipboard",
+                "label": "📞 複製電話",
+                "clipboardText": str(phone)
+            }
+        })
+    if email:
+        footer_buttons.append({
+            "type": "button", "style": "link", "height": "sm",
+            "action": {
+                "type": "clipboard",
+                "label": "📧 複製 Email",
+                "clipboardText": str(email)
+            }
+        })
     if drive_link:
+        footer_buttons.append({
+            "type": "button", "style": "link", "height": "sm",
+            "action": {"type": "uri", "label": "📷 查看名片圖片", "uri": str(drive_link)}
+        })
+    
+    if footer_buttons:
         bubble["footer"] = {
-            "type": "box", "layout": "vertical",
-            "contents": [
-                {
-                    "type": "button", "style": "link", "height": "sm",
-                    "action": {"type": "uri", "label": "📷 查看名片圖片", "uri": str(drive_link)}
-                }
-            ]
+            "type": "box", "layout": "vertical", "spacing": "sm",
+            "contents": footer_buttons,
+            "paddingAll": "10px"
         }
     
     return bubble
@@ -676,8 +698,12 @@ def handle_message(event):
 
         # 4. 🤖 一般對話模式 (帶上下文的 ChatGPT)
         else:
-            send_loading_animation(chat_id, duration=10)
-            reply_text = get_gpt_reply(user_text, chat_id)
+            # 名片群組內不開放閒聊，只接受指令
+            if source_type == "group" and chat_id == TARGET_GROUP_ID:
+                reply_text = "💡 本群組僅支援以下指令：\n\n🔍 查詢 關鍵字\n📝 修改 自然語言描述\n🗑️ 刪除 自然語言描述\n\n範例：\n查詢 Jenny\n修改 把Jenny的電話改成0912345678\n刪除 王小明"
+            else:
+                send_loading_animation(chat_id, duration=10)
+                reply_text = get_gpt_reply(user_text, chat_id)
 
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
         
